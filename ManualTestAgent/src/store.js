@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const DIR = path.resolve("data");
+const DIR = path.resolve(process.env.DATA_DIR || "data");
 fs.mkdirSync(DIR, { recursive: true });
 const file = (key) => path.join(DIR, `${key.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
 

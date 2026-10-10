@@ -76,3 +76,17 @@ export async function addComment(key, text) {
   });
   if (!res.ok) throw new Error(`JIRA comment on ${key} failed: ${res.status}`);
 }
+
+// Best-effort traceability: story "is tested by" test (requires JIRA creds and the "Test" link type from Xray).
+export async function linkTestToStory(storyKey, testKey) {
+  const res = await fetch(`${jira.baseUrl}/rest/api/3/issueLink`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: { name: "Test" },
+      inwardIssue: { key: storyKey },
+      outwardIssue: { key: testKey },
+    }),
+  });
+  if (!res.ok) throw new Error(`JIRA link ${storyKey}->${testKey} failed: ${res.status}`);
+}

@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import express from "express";
 import { config } from "./config.js";
 import { runManualTester, AGENT_NAME } from "./agent.js";
-import { fetchIssue, normalizeIssue, jiraEnabled, addComment } from "./jira.js";
+import { fetchIssue, normalizeIssue, jiraEnabled, addComment, linkTestToStory } from "./jira.js";
+import { publishTestCases, xrayEnabled } from "./xray.js";
 import { saveReview, getReview, listReviews } from "./store.js";
 import { listView, reviewView } from "./views.js";
 
@@ -56,20 +57,57 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, agent: AGENT_NAME }));
 app.get("/reviews", (_req, res) => res.send(listView(listReviews())));
 app.get("/reviews/:key", (req, res) => {
   const r = getReview(req.params.key);
-  return r ? res.send(reviewView(r)) : res.sendStatus(404);
+  return r ? res.send(reviewView(r, config.xray.defaultCycleName)) : res.sendStatus(404);
 });
+async function publish(key, cycleName) {
+  const now = () => new Date().toISOString();
+  let rec = getReview(key);
+  rec = { ...rec, status: "publishing", cycleName, error: undefined, updatedAt: now() };
+  saveReview(rec);
+  try {
+    const result = await publishTestCases({
+      storyKey: key,
+      testCases: rec.output.testCases,
+      cycleName,
+      progress: rec.xray,
+      onProgress: (xray) => saveReview({ ...rec, xray, updatedAt: now() }),
+    });
+    if (jiraEnabled()) {
+      for (const t of Object.values(result.tests)) {
+        await linkTestToStory(key, t.key).catch((e) => console.error("[jira] link failed:", e.message));
+      }
+      await addComment(key, `${AGENT_NAME}: ${Object.keys(result.tests).length} approved tests created in Xray and added to test cycle "${cycleName}" (${result.cycle.key}).`).catch(() => {});
+    }
+    saveReview({ ...getReview(key), status: "published", xray: result, error: undefined, updatedAt: now() });
+  } catch (e) {
+    console.error(`[xray] ${key} publish failed:`, e);
+    saveReview({ ...getReview(key), status: "publish_failed", error: e.message, updatedAt: now() });
+  }
+}
+
 app.post("/reviews/:key/decision", (req, res) => {
   const r = getReview(req.params.key);
-  if (!r || r.status === "processing") return res.sendStatus(404);
-  if (!["approved", "rejected"].includes(req.body.decision)) return res.sendStatus(400);
-  saveReview({ ...r, status: req.body.decision, reviewerComment: req.body.comment || "", updatedAt: new Date().toISOString() });
+  if (!r || !["pending_review", "rejected", "approved", "publish_failed"].includes(r.status)) return res.sendStatus(409);
+  const { decision } = req.body;
+  if (!["approved", "rejected"].includes(decision)) return res.sendStatus(400);
+  if (decision === "approved" && !xrayEnabled()) return res.status(503).send("Xray is not configured (XRAY_CLIENT_ID / XRAY_CLIENT_SECRET)");
+  const cycleName = (req.body.cycleName || "").trim() || config.xray.defaultCycleName;
+  saveReview({ ...r, status: decision, reviewerComment: req.body.comment || "", cycleName, updatedAt: new Date().toISOString() });
+  if (decision === "approved") publish(r.key, cycleName);
+  res.redirect(`/reviews/${r.key}`);
+});
+app.post("/reviews/:key/retry-publish", (req, res) => {
+  const r = getReview(req.params.key);
+  if (!r || r.status !== "publish_failed") return res.sendStatus(409);
+  publish(r.key, r.cycleName || config.xray.defaultCycleName);
   res.redirect(`/reviews/${r.key}`);
 });
 app.post("/reviews/:key/regenerate", (req, res) => {
   const r = getReview(req.params.key);
-  if (!r || r.status === "processing") return res.sendStatus(404);
+  if (!r || ["processing", "publishing", "published"].includes(r.status)) return res.sendStatus(409);
   generate(r.key, r.story);
   res.redirect(`/reviews/${r.key}`);
 });
 
-app.listen(config.port, () => console.log(`${AGENT_NAME} listening on ${config.publicBaseUrl} (port ${config.port})`));
+const server = app.listen(config.port, () => console.log(`${AGENT_NAME} listening on ${config.publicBaseUrl} (port ${config.port})`));
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => server.close(() => process.exit(0)));

@@ -1,0 +1,5 @@
+node_modules
+.env
+data
+k8s
+.git

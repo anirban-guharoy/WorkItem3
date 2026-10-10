@@ -1,0 +1,6 @@
+{
+  "provider": "azure-foundry-anthropic",
+  "model": "claude-sonnet-4-5",
+  "temperature": 0.2,
+  "maxTokens": 8192
+}

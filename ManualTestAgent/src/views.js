@@ -20,12 +20,16 @@ export function listView(reviews) {
   return page("Manual Tester reviews", `<h1>Manual Tester - reviews</h1><ul>${rows || "<li class='muted'>None yet</li>"}</ul>`);
 }
 
-export function reviewView(r) {
+export function reviewView(r, defaultCycle = "") {
   let content;
-  if (r.status === "processing") {
-    content = `<p>The agent is working on this story... <a href="">refresh</a></p><meta http-equiv="refresh" content="5">`;
-  } else if (r.status === "failed") {
-    content = `<p>Generation failed: <code>${esc(r.error)}</code></p>`;
+  if (r.status === "processing" || r.status === "publishing") {
+    content = `<p>Working on this story... <a href="">refresh</a></p><meta http-equiv="refresh" content="5">`;
+  } else if (r.status === "failed" || r.status === "publish_failed") {
+    content = `<p>Generation failed: <code>${esc(r.error)}</code></p>${
+      r.status === "publish_failed"
+        ? `<form method="post" action="/reviews/${esc(r.key)}/retry-publish"><button>Retry publishing to Xray</button></form>`
+        : ""
+    }`;
   } else {
     const o = r.output;
     content = `<p>${esc(o.summary)}</p>
@@ -42,9 +46,19 @@ ${t.preconditions.length ? `<b>Preconditions</b><ul>${t.preconditions.map((p) =>
 <b>Expected result</b><p>${esc(t.expectedResult)}</p></div>`,
   )
   .join("")}
-<form method="post" action="/reviews/${esc(r.key)}/decision">
+${
+  r.status === "published"
+    ? `<p><b>Published to Xray</b> - cycle "${esc(r.xray?.cycle?.name)}" (${esc(r.xray?.cycle?.key)}); tests: ${Object.values(r.xray?.tests || {}).map((t) => esc(t.key)).join(", ")}</p>`
+    : ""
+}
+<form method="post" action="/reviews/${esc(r.key)}/decision" ${r.status === "published" ? "hidden" : ""}>
+${
+  r.status === "published"
+    ? ""
+    : `<p><label>Xray test cycle name <input name="cycleName" size="50" value="${esc(r.cycleName || defaultCycle)}"></label></p>`
+}
 <textarea name="comment" placeholder="Reviewer comments">${esc(r.reviewerComment || "")}</textarea><br>
-<button name="decision" value="approved">Approve</button>
+<button name="decision" value="approved">Approve &amp; create in Xray</button>
 <button name="decision" value="rejected">Reject</button>
 <button formaction="/reviews/${esc(r.key)}/regenerate">Regenerate</button></form>`;
   }
