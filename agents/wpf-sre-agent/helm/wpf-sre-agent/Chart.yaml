@@ -1,0 +1,6 @@
+apiVersion: v2
+name: wpf-sre-agent
+description: Entra-protected WPF SRE API and Teams bot
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

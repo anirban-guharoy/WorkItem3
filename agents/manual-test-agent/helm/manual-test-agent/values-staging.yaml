@@ -1,0 +1,17 @@
+# Staging environment. Placeholders only.
+appEnv: staging
+image:
+  repository: REPLACE_ACR_NAME.azurecr.io/manual-test-agent
+config:
+  LOG_LEVEL: info
+  PUBLIC_BASE_URL: https://agent-staging.REPLACE_DOMAIN
+  REQUIRE_DISTINCT_REVIEWER: 'true'
+  # Writes stay disabled until the MCP write tool mapping is verified against the real server.
+  MCP_ALLOW_WRITES: 'false'
+api:
+  replicaCount: 2
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70 }
+worker:
+  keda: { enabled: true, minReplicaCount: 1, maxReplicaCount: 5, messageCount: '5' }
+ingress:
+  host: agent-staging.REPLACE_DOMAIN

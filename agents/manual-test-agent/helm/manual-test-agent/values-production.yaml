@@ -1,0 +1,21 @@
+# Production environment. Placeholders only.
+appEnv: production
+image:
+  repository: REPLACE_ACR_NAME.azurecr.io/manual-test-agent
+config:
+  LOG_LEVEL: info
+  PUBLIC_BASE_URL: https://agent.REPLACE_DOMAIN
+  REQUIRE_DISTINCT_REVIEWER: 'true'
+  MCP_ALLOW_WRITES: 'true' # publishing enabled only after the write tool mapping has been verified in staging
+api:
+  replicaCount: 3
+  autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 10, targetCPUUtilizationPercentage: 65 }
+  pdb: { minAvailable: 2 }
+  resources:
+    requests: { cpu: 250m, memory: 384Mi }
+    limits: { cpu: '1', memory: 768Mi }
+worker:
+  keda: { enabled: true, minReplicaCount: 2, maxReplicaCount: 20, messageCount: '5' }
+  pdb: { minAvailable: 1 }
+ingress:
+  host: agent.REPLACE_DOMAIN

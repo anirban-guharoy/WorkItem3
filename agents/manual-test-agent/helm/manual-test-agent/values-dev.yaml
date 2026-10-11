@@ -1,0 +1,21 @@
+# Development environment. Placeholders only: supply real values at deploy time (--set / pipeline variables).
+appEnv: development
+image:
+  repository: REPLACE_ACR_NAME.azurecr.io/manual-test-agent
+config:
+  LOG_LEVEL: debug
+  PUBLIC_BASE_URL: https://agent-dev.REPLACE_DOMAIN
+  REQUIRE_DISTINCT_REVIEWER: 'false'
+  MCP_ALLOW_WRITES: 'false'
+api:
+  replicaCount: 1
+  autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 2, targetCPUUtilizationPercentage: 80 }
+  pdb: { minAvailable: 0 }
+worker:
+  replicaCount: 1
+  keda: { enabled: false, minReplicaCount: 1, maxReplicaCount: 2, messageCount: '5' }
+  pdb: { minAvailable: 0 }
+ingress:
+  host: agent-dev.REPLACE_DOMAIN
+topologySpread:
+  enabled: false

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: manual-test-agent
+description: JIRA test case generation agent (API + Service Bus worker) for AKS
+type: application
+version: 2.0.0
+appVersion: '2.0.0'

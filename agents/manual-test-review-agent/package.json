@@ -3,15 +3,18 @@
   "version": "1.0.0",
   "description": "Independent LangChain reviewer for generated manual test cases",
   "type": "module",
-  "main": "src/server.js",
+  "main": "src/api/app.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/agent.js && node --check src/config.js && node --check src/store.js && node --check src/quality-gate.js",
-    "test": "node --test"
+    "start": "node src/api/main.js",
+    "dev": "node --watch src/api/main.js",
+    "check": "node --check src/api/main.js && node --check src/api/app.js && node --check src/graph/review.js && node --check src/config/index.js && node --check src/repositories/review-store.js && node --check src/services/review-gate.js",
+    "test": "node --test tests/unit/*.test.js tests/integration/*.test.js tests/e2e/*.test.js",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js"
   },
   "dependencies": {
     "@langchain/core": "^1.2.17",
+    "@workitem3/agent-common": "1.0.0",
     "@workitem3/entra-auth": "1.0.0",
     "@workitem3/langchain-runtime": "1.0.0",
     "@workitem3/test-case-contract": "1.0.0",

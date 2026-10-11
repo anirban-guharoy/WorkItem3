@@ -12,16 +12,16 @@ The agent sends JSON requests with a bearer `Authorization` header and expects J
 Configure the token with the least-privilege permissions needed for health, pod/activity
 reads, and the restart action.
 
-| Setting | Purpose |
-| --- | --- |
-| `BACKSTAGE_BASE_URL` | HTTPS origin of the remote Backstage server |
-| `BACKSTAGE_AZURE_HEALTH_PATH` | GET path for Azure Insights health |
-| `BACKSTAGE_PODS_PATH` | GET path returning AKS pods |
-| `BACKSTAGE_POD_ACTIVITY_PATH` | GET path for activity; supports `{namespace}` and `{pod}` |
-| `BACKSTAGE_RESTART_ACTION_PATH` | Backstage restart action path; supports `{namespace}` and `{pod}` |
-| `BACKSTAGE_RESTART_ACTION_METHOD` | `POST` or `PUT` |
-| `BACKSTAGE_RESTART_ACTION_BODY` | JSON body template; supports `{namespace}` and `{pod}` |
-| `BACKSTAGE_REQUEST_TIMEOUT_MS` | Backstage HTTP timeout (default 15 seconds) |
+| Setting                           | Purpose                                                           |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `BACKSTAGE_BASE_URL`              | HTTPS origin of the remote Backstage server                       |
+| `BACKSTAGE_AZURE_HEALTH_PATH`     | GET path for Azure Insights health                                |
+| `BACKSTAGE_PODS_PATH`             | GET path returning AKS pods                                       |
+| `BACKSTAGE_POD_ACTIVITY_PATH`     | GET path for activity; supports `{namespace}` and `{pod}`         |
+| `BACKSTAGE_RESTART_ACTION_PATH`   | Backstage restart action path; supports `{namespace}` and `{pod}` |
+| `BACKSTAGE_RESTART_ACTION_METHOD` | `POST` or `PUT`                                                   |
+| `BACKSTAGE_RESTART_ACTION_BODY`   | JSON body template; supports `{namespace}` and `{pod}`            |
+| `BACKSTAGE_REQUEST_TIMEOUT_MS`    | Backstage HTTP timeout (default 15 seconds)                       |
 
 The agent returns explicit upstream errors rather than substituting empty health data. Backstage
 responses are limited to 1 MB and credential-shaped fields are redacted before returning data to
@@ -135,3 +135,24 @@ ConfigMap/Ingress. Keep Backstage, Foundry, Bot, MCP, and LangSmith credentials 
 Secret. The JSON learning store uses a persistent volume and a single agent replica to avoid
 concurrent writes. The Deployment uses no Kubernetes API permissions; pod restarts are delegated to
 the configured Backstage action.
+
+The recommended chart is `helm/wpf-sre-agent`. It includes a retained learning-data PVC,
+non-root/read-only container, probes, NetworkPolicy, optional TLS ingress, and Workload Identity
+annotations. It intentionally rejects more than one replica because the feedback store is
+file-backed. See [deployment](docs/deployment.md), [architecture](docs/architecture.md), and
+[security](docs/security.md). The legacy `k8s/` YAML is retained for reference; use Helm for new
+deployments.
+
+## Source and validation
+
+Implementation modules are organized under `src/api`, `src/auth`, `src/config`, `src/graph`,
+`src/mcp`, `src/models`, `src/prompts`, `src/repositories`, `src/services`, `src/observability`,
+`src/security`, `src/shared`, and `src/worker`. Unit, integration, HTTP, and fixture files are under
+`tests/`.
+
+```bash
+npm run check --workspace=@workitem3/wpf-sre-agent
+npm test --workspace=@workitem3/wpf-sre-agent
+helm lint agents/wpf-sre-agent/helm/wpf-sre-agent \
+  --set image.repository=<acr>.azurecr.io/wpf-sre-agent --set image.tag=<tag>
+```

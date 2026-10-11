@@ -1,0 +1,35 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "sre.name" . }}-default-deny
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sre.name" . }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | quote }}
+      ports:
+        - { protocol: TCP, port: 3002 }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    {{- range .Values.networkPolicy.egress }}
+    {{- if .cidr }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr | quote }}
+      ports:
+        - { protocol: TCP, port: {{ .port }} }
+    {{- end }}
+    {{- end }}
+{{- end }}

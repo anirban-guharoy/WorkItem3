@@ -1,0 +1,4 @@
+{
+  "status": "CrashLoopBackOff",
+  "details": ["Container exited with code 137", "Readiness probe failed"]
+}

@@ -1,0 +1,160 @@
+name: manual-test-agent CI/CD
+
+on:
+  pull_request:
+    paths:
+      - "agents/manual-test-agent/**"
+      - "packages/agent-common/**"
+      - "package-lock.json"
+      - ".github/workflows/manual-test-agent*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "agents/manual-test-agent/**"
+      - "packages/agent-common/**"
+      - "package-lock.json"
+      - ".github/workflows/manual-test-agent*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-test-agent-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  WORKSPACE: "@workitem3/manual-test-agent"
+  AGENT_DIR: agents/manual-test-agent
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --workspace=${{ env.WORKSPACE }} --include-workspace-root=false
+      - name: Lint
+        run: npm run lint --workspace=${{ env.WORKSPACE }}
+      - name: Format check
+        run: npm run format:check --workspace=${{ env.WORKSPACE }}
+      - name: Type check
+        run: npm run typecheck --workspace=${{ env.WORKSPACE }}
+      - name: Unit, integration and end-to-end tests
+        run: npm test --workspace=${{ env.WORKSPACE }}
+      - name: Build
+        run: npm run build --workspace=${{ env.WORKSPACE }}
+      - name: Dependency audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high --workspace=${{ env.WORKSPACE }}
+
+  validate-deploy-artifacts:
+    name: Helm and Bicep validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Helm lint and render every environment
+        working-directory: ${{ env.AGENT_DIR }}/helm/manual-test-agent
+        run: |
+          for env in dev staging production; do
+            helm lint . -f values-$env.yaml -f ci/values-ci.yaml
+            helm template r . -f values-$env.yaml -f ci/values-ci.yaml > /dev/null
+          done
+      - name: Bicep build
+        working-directory: ${{ env.AGENT_DIR }}/infra
+        run: |
+          az bicep install
+          az bicep build --file main.bicep --stdout > /dev/null
+          for env in dev staging production; do
+            POSTGRES_ADMIN_PASSWORD=validation-only az bicep build-params --file environments/$env.bicepparam --stdout > /dev/null
+          done
+
+  image:
+    name: Build and scan image
+    runs-on: ubuntu-latest
+    needs: [verify, validate-deploy-artifacts]
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ env.AGENT_DIR }}/Dockerfile
+          load: true
+          tags: manual-test-agent:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: manual-test-agent:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan repository files and IaC (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: ${{ env.AGENT_DIR }}
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+  publish:
+    name: Publish image to ACR
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [image]
+    environment: staging
+    permissions:
+      id-token: write # GitHub OIDC federation to Azure; no stored client secret
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Log in to ACR
+        run: az acr login --name "${{ vars.ACR_NAME }}"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ env.AGENT_DIR }}/Dockerfile
+          push: true
+          tags: |
+            ${{ vars.ACR_NAME }}.azurecr.io/manual-test-agent:${{ needs.image.outputs.tag }}
+          cache-from: type=gha
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: [image, publish]
+    uses: ./.github/workflows/manual-test-agent-deploy.yml
+    with:
+      environment: staging
+      image-tag: ${{ needs.image.outputs.tag }}
+    permissions:
+      id-token: write
+      contents: read
+
+  deploy-production:
+    name: Deploy to production (requires environment approval)
+    needs: [image, deploy-staging]
+    uses: ./.github/workflows/manual-test-agent-deploy.yml
+    with:
+      environment: production
+      image-tag: ${{ needs.image.outputs.tag }}
+    permissions:
+      id-token: write
+      contents: read

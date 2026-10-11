@@ -1,0 +1,121 @@
+image:
+  # Set by CI to <acr>.azurecr.io/manual-test-agent and an immutable tag (git SHA).
+  repository: ''
+  tag: ''
+  pullPolicy: IfNotPresent
+
+appEnv: development # development|staging|production
+
+# Non-secret application configuration (rendered into a ConfigMap). No secrets here.
+config:
+  LOG_LEVEL: info
+  PUBLIC_BASE_URL: ''
+  AUTH_MODE: entra
+  ENTRA_TENANT_ID: ''
+  ENTRA_AUDIENCE: ''
+  ENTRA_REQUIRED_SCOPE: Agent.Access
+  MCP_ADAPTER: remote
+  MCP_SERVER_URL: ''
+  MCP_AUTH_MODE: entra
+  MCP_ENTRA_SCOPE: ''
+  MCP_ALLOW_WRITES: 'false'
+  MCP_TOOL_MAP_JSON: '' # see docs/model-configuration.md
+  MODEL_PROVIDER: foundry
+  FOUNDRY_ENDPOINT: ''
+  FOUNDRY_DEPLOYMENT: ''
+  FOUNDRY_API_VERSION: '2023-06-01'
+  FOUNDRY_AUTH_MODE: entra
+  QUEUE_TRANSPORT: servicebus
+  SERVICEBUS_NAMESPACE: ''
+  SERVICEBUS_QUEUE: generation-jobs
+  CHECKPOINTER: postgres
+  DATABASE_SSL: 'true'
+  REQUIRE_DISTINCT_REVIEWER: 'true'
+  PROJECTS_JSON: '' # {"KEY":{"members":["<entra group oid>"],...}}
+  APPLICATIONINSIGHTS_CONNECTION_STRING: ''
+
+# Secrets are never stored in values. They are synced from Azure Key Vault by the
+# Secrets Store CSI driver (Azure provider); each component authenticates with its own workload identity.
+keyVault:
+  enabled: true
+  name: ''
+  tenantId: ''
+  # Kubernetes secret key -> Key Vault secret name
+  secrets:
+    DATABASE_URL: agent-database-url
+
+workloadIdentity:
+  api:
+    clientId: '' # client id of the API user-assigned managed identity
+  worker:
+    clientId: '' # client id of the worker user-assigned managed identity
+  migrate:
+    clientId: '' # client id of the migration identity (may equal the worker's)
+
+api:
+  replicaCount: 2
+  port: 3000
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    minAvailable: 1
+
+worker:
+  replicaCount: 2
+  healthPort: 8080
+  resources:
+    requests: { cpu: 250m, memory: 384Mi }
+    limits: { cpu: '1', memory: 768Mi }
+  terminationGracePeriodSeconds: 120
+  # KEDA scales on Service Bus backlog; requires the KEDA add-on on the cluster.
+  keda:
+    enabled: true
+    minReplicaCount: 1
+    maxReplicaCount: 10
+    messageCount: '5'
+  pdb:
+    minAvailable: 1
+
+migrations:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: webapprouting.kubernetes.azure.com
+  host: ''
+  tlsSecretName: '' # certificate synced from Key Vault or issued by cert-manager
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 512k
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: app-routing-system # namespace of the ingress controller
+  # Egress is restricted to DNS plus these CIDRs/ports (private endpoints / firewall ranges).
+  # Entries with an empty cidr are skipped.
+  egress:
+    - { name: postgres, cidr: '', port: 5432 }
+    - { name: servicebus, cidr: '', port: 5671 }
+    - { name: servicebus-https, cidr: '', port: 443 }
+    - { name: mcp-cluster, cidr: '', port: 443 }
+    - { name: foundry, cidr: '', port: 443 }
+    - { name: entra-and-monitor, cidr: '', port: 443 }
+
+topologySpread:
+  enabled: true
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+nodeSelector: {}
+tolerations: []

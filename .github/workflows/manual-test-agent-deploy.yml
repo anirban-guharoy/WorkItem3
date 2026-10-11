@@ -1,0 +1,79 @@
+name: manual-test-agent deploy
+
+# Reusable deployment. The GitHub `environment` (staging/production) holds its own variables and
+# protection rules. Configure "Required reviewers" on the production environment for explicit approval.
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      RELEASE: mta
+      NAMESPACE: manual-test-agent
+      CHART: agents/manual-test-agent/helm/manual-test-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/setup-helm@v4
+      - uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ vars.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ vars.AKS_NAME }}
+          use-kubelogin: 'true'
+      - name: Write environment-specific values
+        # HELM_EXTRA_VALUES_YAML (environment variable) carries non-secret config such as MCP_TOOL_MAP_JSON,
+        # PROJECTS_JSON, FOUNDRY_* and network CIDRs. Secrets stay in Key Vault.
+        run: printf '%s\n' "$HELM_EXTRA_VALUES_YAML" > "$RUNNER_TEMP/extra-values.yaml"
+        env:
+          HELM_EXTRA_VALUES_YAML: ${{ vars.HELM_EXTRA_VALUES_YAML }}
+      - name: Helm deploy
+        run: |
+          helm upgrade --install "$RELEASE" "$CHART" \
+            --namespace "$NAMESPACE" --create-namespace \
+            -f "$CHART/values-${{ inputs.environment }}.yaml" \
+            -f "$RUNNER_TEMP/extra-values.yaml" \
+            --set image.repository="${{ vars.ACR_NAME }}.azurecr.io/manual-test-agent" \
+            --set image.tag="${{ inputs.image-tag }}" \
+            --set keyVault.name="${{ vars.KEY_VAULT_NAME }}" \
+            --set keyVault.tenantId="${{ vars.AZURE_TENANT_ID }}" \
+            --set workloadIdentity.api.clientId="${{ vars.API_CLIENT_ID }}" \
+            --set workloadIdentity.worker.clientId="${{ vars.WORKER_CLIENT_ID }}" \
+            --set workloadIdentity.migrate.clientId="${{ vars.MIGRATE_CLIENT_ID }}" \
+            --set config.ENTRA_TENANT_ID="${{ vars.AZURE_TENANT_ID }}" \
+            --set config.ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" \
+            --set config.SERVICEBUS_NAMESPACE="${{ vars.SERVICEBUS_NAMESPACE }}" \
+            --set ingress.host="${{ vars.INGRESS_HOST }}" \
+            --set ingress.tlsSecretName="${{ vars.INGRESS_TLS_SECRET }}" \
+            --atomic --timeout 10m
+      - name: Wait for rollout
+        run: |
+          kubectl -n "$NAMESPACE" rollout status deploy/${RELEASE}-mta-api --timeout=300s
+          kubectl -n "$NAMESPACE" rollout status deploy/${RELEASE}-mta-worker --timeout=300s
+      - name: Smoke test
+        run: |
+          kubectl -n "$NAMESPACE" port-forward svc/${RELEASE}-mta-api 8080:80 &
+          PF=$!
+          trap 'kill $PF' EXIT
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/health/live && break || sleep 2; done
+          curl -fsS http://127.0.0.1:8080/health/ready
+          # Unauthenticated requests must be rejected.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/generations/00000000-0000-4000-8000-000000000000)" = "401"

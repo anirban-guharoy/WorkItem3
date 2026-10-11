@@ -1,0 +1,18 @@
+{
+  "name": "@workitem3/agent-common",
+  "version": "1.0.0",
+  "description": "Shared security, hashing, and durable JSON-file helpers for WorkItem3 agents",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "check": "node --check src/index.js",
+    "test": "node --test test/*.test.js"
+  }
+}

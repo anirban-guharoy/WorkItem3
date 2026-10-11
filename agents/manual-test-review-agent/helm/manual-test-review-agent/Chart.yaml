@@ -1,0 +1,6 @@
+apiVersion: v2
+name: manual-test-review-agent
+description: Entra-protected manual test review API
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

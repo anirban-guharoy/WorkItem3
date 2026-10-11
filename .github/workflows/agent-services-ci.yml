@@ -1,0 +1,95 @@
+name: Agent services CI
+
+on:
+  pull_request:
+    paths:
+      - "agents/manual-test-review-agent/**"
+      - "agents/wpf-sre-agent/**"
+      - "packages/agent-common/**"
+      - "package-lock.json"
+      - ".github/workflows/agent-services-*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "agents/manual-test-review-agent/**"
+      - "agents/wpf-sre-agent/**"
+      - "packages/agent-common/**"
+      - "package-lock.json"
+      - ".github/workflows/agent-services-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check --workspace=@workitem3/manual-test-review-agent
+      - run: npm test --workspace=@workitem3/manual-test-review-agent
+      - run: npm run check --workspace=@workitem3/wpf-sre-agent
+      - run: npm test --workspace=@workitem3/wpf-sre-agent
+      - run: npm run check --workspace=@workitem3/manual-test-agent
+      - run: npm test --workspace=@workitem3/manual-test-agent
+      - run: node --test packages/agent-common/test/*.test.js
+      - run: npm audit --audit-level=high
+
+  deploy-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint and render agent charts
+        run: |
+          helm lint agents/manual-test-review-agent/helm/manual-test-review-agent \
+            --set image.repository=example.azurecr.io/review --set image.tag=ci
+          helm template review agents/manual-test-review-agent/helm/manual-test-review-agent \
+            --set image.repository=example.azurecr.io/review --set image.tag=ci
+          helm lint agents/wpf-sre-agent/helm/wpf-sre-agent \
+            --set image.repository=example.azurecr.io/sre --set image.tag=ci
+          helm template sre agents/wpf-sre-agent/helm/wpf-sre-agent \
+            --set image.repository=example.azurecr.io/sre --set image.tag=ci
+      - name: Build Bicep
+        run: |
+          az bicep install
+          az bicep build --file agents/manual-test-review-agent/infra/main.bicep --stdout > /dev/null
+          az bicep build --file agents/wpf-sre-agent/infra/main.bicep --stdout > /dev/null
+          for agent in manual-test-review-agent wpf-sre-agent; do
+            for env in dev staging production; do
+              az bicep build-params \
+                --file "agents/$agent/infra/environments/$env.bicepparam" --stdout > /dev/null
+            done
+          done
+
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: manual-test-review-agent
+            dockerfile: agents/manual-test-review-agent/Dockerfile
+          - name: wpf-sre-agent
+            dockerfile: agents/wpf-sre-agent/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          load: true
+          tags: ${{ matrix.name }}:${{ github.sha }}
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.name }}:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"

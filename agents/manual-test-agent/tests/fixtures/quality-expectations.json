@@ -1,0 +1,18 @@
+{
+  "PROJ-101": {
+    "finalStatus": "awaiting_review",
+    "minTestCases": 3,
+    "allCriteriaCovered": true,
+    "mustIncludeTestTypes": ["positive"],
+    "everyCaseHasTraceability": true,
+    "everyStepHasExpectedResult": true
+  },
+  "PROJ-102": {
+    "finalStatus": "needs_clarification",
+    "minTestCases": 0,
+    "allCriteriaCovered": false,
+    "mustIncludeTestTypes": [],
+    "everyCaseHasTraceability": true,
+    "everyStepHasExpectedResult": true
+  }
+}

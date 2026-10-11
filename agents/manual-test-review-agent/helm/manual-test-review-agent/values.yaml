@@ -1,0 +1,32 @@
+replicas: 1
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+serviceAccount:
+  create: true
+  name: ""
+  clientId: ""
+service:
+  port: 80
+  targetPort: 3001
+config: {}
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  tlsSecretName: ""
+  annotations: {}
+secret:
+  name: ""
+data:
+  storageClassName: ""
+  size: 2Gi
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx
+  egress: []
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: 1, memory: 1Gi }

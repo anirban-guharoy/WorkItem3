@@ -9,10 +9,11 @@ COPY packages/langchain-runtime/package.json packages/langchain-runtime/package.
 COPY packages/test-case-contract/package.json packages/test-case-contract/package.json
 COPY packages/xray-cloud/package.json packages/xray-cloud/package.json
 COPY packages/entra-auth/package.json packages/entra-auth/package.json
+COPY packages/agent-common/package.json packages/agent-common/package.json
 RUN npm ci --omit=dev --workspace=@workitem3/wpf-sre-agent --workspace=@workitem3/langchain-runtime --workspace=@workitem3/entra-auth --include-workspace-root=false
 
 FROM node:22-alpine
-ENV NODE_ENV=production PORT=3002
+ENV NODE_ENV=production PORT=3002 WPF_SRE_LEARNING_STORE_PATH=/data/learning.json
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
@@ -26,7 +27,10 @@ COPY packages/langchain-runtime/package.json packages/langchain-runtime/package.
 COPY packages/langchain-runtime/src packages/langchain-runtime/src
 COPY packages/entra-auth/package.json packages/entra-auth/package.json
 COPY packages/entra-auth/src packages/entra-auth/src
+COPY packages/agent-common/package.json packages/agent-common/package.json
+COPY packages/agent-common/src packages/agent-common/src
+RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 3002
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:3002/healthz || exit 1
-CMD ["node", "agents/wpf-sre-agent/src/server.js"]
+CMD ["node", "agents/wpf-sre-agent/src/api/main.js"]

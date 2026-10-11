@@ -1,0 +1,104 @@
+name: Deploy agent service
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: Agent to deploy
+        required: true
+        type: choice
+        options:
+          - manual-test-review-agent
+          - wpf-sre-agent
+      environment:
+        description: GitHub deployment environment; protect production with required reviewers
+        required: true
+        type: choice
+        options: [staging, production]
+      image-tag:
+        description: Immutable image tag (for example a commit SHA)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AGENT: ${{ inputs.agent }}
+      IMAGE_TAG: ${{ inputs.image-tag }}
+      NAMESPACE: ${{ inputs.agent }}
+      RELEASE: ${{ inputs.agent }}
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      AKS_NAME: ${{ vars.AKS_NAME }}
+      AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+      HELM_SECRET_NAME: ${{ vars.HELM_SECRET_NAME }}
+      HELM_EXTRA_VALUES_YAML: ${{ vars.HELM_EXTRA_VALUES_YAML }}
+      INGRESS_HOST: ${{ vars.INGRESS_HOST }}
+      INGRESS_TLS_SECRET: ${{ vars.INGRESS_TLS_SECRET }}
+      SERVICE_ACCOUNT_CLIENT_ID: ${{ vars.SERVICE_ACCOUNT_CLIENT_ID }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Build and push the selected image
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker build -f "agents/$AGENT/Dockerfile" \
+            -t "$ACR_NAME.azurecr.io/$AGENT:$IMAGE_TAG" .
+          docker push "$ACR_NAME.azurecr.io/$AGENT:$IMAGE_TAG"
+      - uses: azure/setup-helm@v4
+      - uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_NAME }}
+          use-kubelogin: "true"
+      - name: Select chart
+        id: chart
+        run: |
+          case "$AGENT" in
+            manual-test-review-agent) echo "path=agents/manual-test-review-agent/helm/manual-test-review-agent" >> "$GITHUB_OUTPUT" ;;
+            wpf-sre-agent) echo "path=agents/wpf-sre-agent/helm/wpf-sre-agent" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported agent" >&2; exit 1 ;;
+          esac
+      - name: Write non-secret environment values
+        run: printf '%s\n' "$HELM_EXTRA_VALUES_YAML" > "$RUNNER_TEMP/agent-values.yaml"
+      - name: Deploy
+        run: |
+          helm upgrade --install "$RELEASE" "${{ steps.chart.outputs.path }}" \
+            --namespace "$NAMESPACE" --create-namespace \
+            -f "$RUNNER_TEMP/agent-values.yaml" \
+            --set image.repository="$ACR_NAME.azurecr.io/$AGENT" \
+            --set image.tag="$IMAGE_TAG" \
+            --set secret.name="$HELM_SECRET_NAME" \
+            --set serviceAccount.clientId="$SERVICE_ACCOUNT_CLIENT_ID" \
+            --set ingress.enabled=true \
+            --set ingress.host="$INGRESS_HOST" \
+            --set ingress.tlsSecretName="$INGRESS_TLS_SECRET" \
+            --atomic --timeout 10m
+      - name: Verify readiness
+        run: |
+          kubectl -n "$NAMESPACE" rollout status "deploy/$RELEASE" --timeout=300s
+          kubectl -n "$NAMESPACE" port-forward "svc/$AGENT" 8080:80 &
+          PF=$!
+          trap 'kill "$PF"' EXIT
+          attempt=0
+          while [ "$attempt" -lt 20 ]; do
+            attempt=$((attempt + 1))
+            if curl -fsS http://127.0.0.1:8080/healthz; then exit 0; fi
+            sleep 2
+          done
+          echo "Health probe did not become ready" >&2
+          exit 1

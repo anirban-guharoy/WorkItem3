@@ -3,3 +3,5 @@
 **/.env
 **/data
 npm-debug.log*
+**/dist
+.github

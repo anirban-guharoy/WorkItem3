@@ -1,0 +1,25 @@
+{
+  "story": {
+    "key": "DEMO-1",
+    "summary": "User login",
+    "description": "Users can sign in with their account.",
+    "acceptanceCriteria": "- Valid credentials sign in"
+  },
+  "testCaseSet": {
+    "summary": "Login behavior",
+    "assumptions": [],
+    "contextSources": [],
+    "testCases": [
+      {
+        "id": "TC-001",
+        "title": "Sign in with valid credentials",
+        "type": "functional",
+        "priority": "High",
+        "acceptanceCriterion": "Valid credentials sign in",
+        "preconditions": ["An active account exists"],
+        "steps": ["Open login", "Enter valid credentials", "Submit"],
+        "expectedResult": "The authenticated page is displayed"
+      }
+    ]
+  }
+}

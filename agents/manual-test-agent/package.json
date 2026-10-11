@@ -1,23 +1,60 @@
 {
   "name": "@workitem3/manual-test-agent",
-  "version": "1.0.0",
-  "description": "Manual Tester - LangChain agent that turns JIRA user stories into test cases for human review",
+  "version": "2.0.0",
+  "description": "Supervised JIRA test-case generation agent (Fastify API + LangGraph worker) with human approval",
   "type": "module",
-  "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/agent.js && node --check src/config.js && node --check src/human-review.js && node --check src/learning.js",
-    "test": "node --test"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "migrate": "tsx src/database/migrate-cli.ts",
+    "start:api": "node dist/api/main.js",
+    "start:worker": "node dist/worker/main.js",
+    "dev:local": "tsx src/local/main.ts",
+    "start:local": "node dist/local/main.js",
+    "dev:api": "tsx watch src/api/main.ts",
+    "dev:worker": "tsx watch src/worker/main.ts"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.3",
+    "@azure/monitor-opentelemetry": "^1.20.1",
+    "@azure/service-bus": "^7.10.0",
+    "@fastify/helmet": "^13.1.2",
+    "@fastify/rate-limit": "^11.2.1",
     "@langchain/core": "^1.2.17",
-    "@workitem3/entra-auth": "1.0.0",
+    "@workitem3/agent-common": "1.0.0",
+    "@langchain/langgraph": "^1.4.21",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.6",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@opentelemetry/api": "^1.9.1",
     "dotenv": "^18.0.7",
-    "express": "^5.3.0",
-    "cors": "^2.8.5",
-    "@workitem3/langchain-runtime": "1.0.0",
-    "@workitem3/test-case-contract": "1.0.0",
-    "@workitem3/xray-cloud": "1.0.0"
-  }
+    "fastify": "^5.12.5",
+    "jose": "^6.2.12",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.15.6",
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/api/main.js"
 }

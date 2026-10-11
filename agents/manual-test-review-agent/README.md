@@ -59,7 +59,11 @@ are validated against the shared `@workitem3/test-case-contract` schema.
         "priority": "High",
         "acceptanceCriterion": "Valid credentials sign in",
         "preconditions": ["An active user account exists"],
-        "steps": ["Open the login page", "Enter valid credentials", "Submit the form"],
+        "steps": [
+          "Open the login page",
+          "Enter valid credentials",
+          "Submit the form"
+        ],
         "expectedResult": "The user is signed in and the authenticated page is shown"
       }
     ]
@@ -99,6 +103,25 @@ reviewer secret must include the MCP URL/token, Foundry endpoint/key, and Xray c
 as one replica with an Azure Disk PVC to persist review decisions and resumable Xray publication;
 keep this storage when replacing the pod. Configure an ingress or gateway separately if external
 access is required.
+
+The recommended chart is `helm/manual-test-review-agent`. It configures non-root/read-only
+containers, startup/liveness/readiness probes, a retained PVC, a default-deny NetworkPolicy, optional
+TLS ingress and Workload Identity annotations. Since review idempotency is file-backed, the chart
+rejects replicas above one and uses a recreate rollout strategy. See [deployment](docs/deployment.md)
+and [architecture](docs/architecture.md).
+
+## Source and validation
+
+Implementation modules are organized under `src/api`, `src/auth`, `src/config`, `src/graph`,
+`src/mcp`, `src/models`, `src/prompts`, `src/repositories`, `src/services`, `src/observability`,
+`src/security`, and `src/shared`. Unit, integration, and HTTP tests are under `tests/`.
+
+```bash
+npm run check --workspace=@workitem3/manual-test-review-agent
+npm test --workspace=@workitem3/manual-test-review-agent
+helm lint agents/manual-test-review-agent/helm/manual-test-review-agent \
+  --set image.repository=<acr>.azurecr.io/manual-test-review-agent --set image.tag=<tag>
+```
 
 ## Entra ID and LangSmith
 

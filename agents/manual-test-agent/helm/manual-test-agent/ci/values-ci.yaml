@@ -1,0 +1,24 @@
+# Dummy values used ONLY for `helm lint` / `helm template` in CI. None of these identify real resources.
+image:
+  tag: ci-validation
+keyVault:
+  name: kv-example
+  tenantId: 00000000-0000-0000-0000-000000000000
+workloadIdentity:
+  api: { clientId: 00000000-0000-0000-0000-000000000001 }
+  worker: { clientId: 00000000-0000-0000-0000-000000000002 }
+  migrate: { clientId: 00000000-0000-0000-0000-000000000002 }
+config:
+  ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+  ENTRA_AUDIENCE: api://example
+  MCP_SERVER_URL: https://mcp.example.invalid/mcp
+  MCP_ENTRA_SCOPE: api://example-mcp/.default
+  FOUNDRY_ENDPOINT: https://example.invalid/anthropic
+  FOUNDRY_DEPLOYMENT: example-deployment
+  SERVICEBUS_NAMESPACE: example.servicebus.windows.net
+ingress:
+  tlsSecretName: example-tls
+networkPolicy:
+  egress:
+    - { name: postgres, cidr: 10.0.0.0/24, port: 5432 }
+    - { name: servicebus, cidr: 10.0.1.0/24, port: 5671 }
