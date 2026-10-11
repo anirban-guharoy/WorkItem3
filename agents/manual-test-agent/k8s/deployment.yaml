@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: manual-tester
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: manual-tester-model
+  namespace: manual-tester
+data:
+  models.json: |
+    {
+      "provider": "azure-foundry-anthropic",
+      "model": "claude-sonnet-4-5",
+      "temperature": 0.2,
+      "maxTokens": 8192
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: manual-tester-data
+  namespace: manual-tester
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manual-tester
+  namespace: manual-tester
+spec:
+  replicas: 1 # file store on an RWO disk; use a shared DB before scaling out
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: manual-tester }
+  template:
+    metadata:
+      labels: { app: manual-tester }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: manual-tester
+          image: <ACR_NAME>.azurecr.io/manual-test-agent:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PUBLIC_BASE_URL
+              value: https://manual-tester.example.com
+            - name: XRAY_TEST_CYCLE_NAME
+              value: Manual Tester - Sprint Regression
+            - name: MODEL_CONFIG_FILE
+              value: /etc/manual-tester/models.json
+            - name: LANGSMITH_TRACING
+              value: "true"
+            - name: ENTRA_READ_SCOPE
+              value: Agent.Read
+            - name: ENTRA_REVIEW_SCOPE
+              value: Agent.Review
+            - name: ENTRA_DEVOPS_ROLE
+              value: DevOps
+            - name: ENTRA_TESTER_ROLE
+              value: Tester
+          envFrom:
+            - secretRef:
+                name: manual-tester-secrets
+          readinessProbe:
+            httpGet: { path: /healthz, port: 3000 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 3000 }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: model-config, mountPath: /etc/manual-tester, readOnly: true }
+      volumes:
+        - name: model-config
+          configMap:
+            name: manual-tester-model
+        - name: data
+          persistentVolumeClaim:
+            claimName: manual-tester-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: manual-tester
+  namespace: manual-tester
+spec:
+  selector: { app: manual-tester }
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: manual-tester
+  namespace: manual-tester
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com # AKS app routing add-on
+  rules:
+    - host: manual-tester.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: manual-tester, port: { number: 80 } }

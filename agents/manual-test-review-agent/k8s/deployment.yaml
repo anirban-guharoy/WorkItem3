@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: manual-test-reviewer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: manual-test-reviewer-model
+  namespace: manual-test-reviewer
+data:
+  models.json: |
+    {
+      "provider": "azure-foundry-anthropic",
+      "model": "claude-opus-4-1",
+      "temperature": 0.1,
+      "maxTokens": 8192
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: manual-test-reviewer-data
+  namespace: manual-test-reviewer
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manual-test-reviewer
+  namespace: manual-test-reviewer
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: manual-test-reviewer }
+  template:
+    metadata:
+      labels: { app: manual-test-reviewer }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: manual-test-reviewer
+          image: <ACR_NAME>.azurecr.io/manual-test-review-agent:latest
+          ports:
+            - containerPort: 3001
+          env:
+            - name: MODEL_CONFIG_FILE
+              value: /etc/manual-test-reviewer/models.json
+            - name: DATA_DIR
+              value: /data
+            - name: LANGSMITH_TRACING
+              value: "true"
+            - name: ENTRA_READ_SCOPE
+              value: Agent.Read
+            - name: ENTRA_INVOKE_SCOPE
+              value: Agent.Invoke
+            - name: ENTRA_DEVOPS_ROLE
+              value: DevOps
+          envFrom:
+            - secretRef:
+                name: manual-test-reviewer-secrets
+          readinessProbe:
+            httpGet: { path: /healthz, port: 3001 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 3001 }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: model-config, mountPath: /etc/manual-test-reviewer, readOnly: true }
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: model-config
+          configMap:
+            name: manual-test-reviewer-model
+        - name: data
+          persistentVolumeClaim:
+            claimName: manual-test-reviewer-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: manual-test-reviewer
+  namespace: manual-test-reviewer
+spec:
+  type: ClusterIP
+  selector: { app: manual-test-reviewer }
+  ports:
+    - port: 80
+      targetPort: 3001
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: manual-test-reviewer
+  namespace: manual-test-reviewer
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+    - host: manual-test-reviewer.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: manual-test-reviewer, port: { number: 80 } }

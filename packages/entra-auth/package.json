@@ -1,0 +1,14 @@
+{
+  "name": "@workitem3/entra-auth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.js",
+  "scripts": {
+    "check": "node --check src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "jose": "^6.1.0"
+  }
+}

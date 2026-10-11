@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: langsmith-ui
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: langsmith-ui-config
+  namespace: langsmith-ui
+data:
+  ENTRA_TENANT_ID: "<ENTRA_TENANT_ID>"
+  ENTRA_UI_CLIENT_ID: "<LANGSMITH_UI_APP_CLIENT_ID>"
+  ENTRA_UI_API_AUDIENCE: "<LANGSMITH_UI_APP_CLIENT_ID>"
+  ENTRA_DASHBOARD_SCOPE: Dashboard.Read
+  ENTRA_DEVOPS_ROLE: DevOps
+  ENTRA_TESTER_ROLE: Tester
+  MANUAL_TEST_AGENT_URL: "https://manual-tester.example.com"
+  MANUAL_TEST_AGENT_CLIENT_ID: "<MANUAL_TEST_AGENT_APP_CLIENT_ID>"
+  MANUAL_TEST_AGENT_SCOPE: Agent.Read
+  MANUAL_TEST_AGENT_REVIEW_SCOPE: Agent.Review
+  MANUAL_TEST_REVIEW_AGENT_URL: "https://manual-test-reviewer.example.com"
+  MANUAL_TEST_REVIEW_AGENT_CLIENT_ID: "<MANUAL_TEST_REVIEW_AGENT_APP_CLIENT_ID>"
+  MANUAL_TEST_REVIEW_AGENT_SCOPE: Agent.Read
+  WPF_SRE_AGENT_URL: "https://wpf-sre-agent.example.com"
+  WPF_SRE_AGENT_CLIENT_ID: "<WPF_SRE_AGENT_APP_CLIENT_ID>"
+  WPF_SRE_AGENT_SCOPE: Agent.Read
+  LANGSMITH_ENDPOINT: "https://api.smith.langchain.com"
+  LANGSMITH_MANUAL_TEST_PROJECT: "manual-test-agent"
+  LANGSMITH_REVIEW_AGENT_PROJECT: "manual-test-review-agent"
+  LANGSMITH_WPF_SRE_PROJECT: "wpf-sre-agent"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langsmith-ui
+  namespace: langsmith-ui
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: langsmith-ui }
+  template:
+    metadata:
+      labels: { app: langsmith-ui }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: langsmith-ui
+          image: <ACR_NAME>.azurecr.io/langsmith-ui:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: langsmith-ui-config
+            - secretRef:
+                name: langsmith-ui-secrets
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langsmith-ui
+  namespace: langsmith-ui
+spec:
+  selector: { app: langsmith-ui }
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: langsmith-ui
+  namespace: langsmith-ui
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+    - host: langsmith-ui.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: langsmith-ui, port: { number: 80 } }

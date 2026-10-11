@@ -1,0 +1,6 @@
+{
+  "provider": "azure-foundry-anthropic",
+  "model": "claude-opus-4-1",
+  "temperature": 0.1,
+  "maxTokens": 8192
+}

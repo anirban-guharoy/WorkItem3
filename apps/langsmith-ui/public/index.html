@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>LangSmith Agent Status</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Agent operations</p>
+          <h1>LangSmith status</h1>
+          <p class="subhead">Authenticated service health and latest LangSmith runs.</p>
+        </div>
+        <div class="account">
+          <span id="user"></span>
+          <button id="login" hidden>Sign in with Microsoft</button>
+          <button id="refresh" hidden>Refresh</button>
+          <button id="logout" hidden>Sign out</button>
+        </div>
+      </header>
+      <p id="notice" class="notice" role="status">Loading dashboard…</p>
+      <section id="agents-panel" hidden>
+        <h2>Agent status and health</h2>
+        <section id="agents" class="agents" aria-live="polite"></section>
+      </section>
+      <section id="review-panel" class="review-queue" aria-labelledby="review-heading" hidden>
+        <h2 id="review-heading">Generated test cases for human review</h2>
+        <p class="subhead">Review generated cases here. Approval starts publication to Xray; decisions and comments are recorded.</p>
+        <div id="manual-reviews" aria-live="polite"></div>
+      </section>
+      <footer>Access is authenticated through Microsoft Entra ID. Agent health is refreshed every 30 seconds.</footer>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

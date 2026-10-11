@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wpf-sre-agent
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wpf-sre-agent-config
+  namespace: wpf-sre-agent
+data:
+  PORT: "3002"
+  MODEL_CONFIG_FILE: /etc/wpf-sre-agent/models.json
+  BACKSTAGE_BASE_URL: https://backstage.example.com
+  BACKSTAGE_AZURE_HEALTH_PATH: /api/<azure-health-route>
+  BACKSTAGE_PODS_PATH: /api/<pod-list-route>
+  BACKSTAGE_POD_ACTIVITY_PATH: /api/<pod-activity-route>/{namespace}/{pod}
+  BACKSTAGE_RESTART_ACTION_PATH: /api/<restart-action-route>
+  BACKSTAGE_RESTART_ACTION_METHOD: POST
+  BACKSTAGE_RESTART_ACTION_BODY: '{"namespace":"{namespace}","pod":"{pod}"}'
+  BACKSTAGE_REQUEST_TIMEOUT_MS: "15000"
+  MCP_SERVER_URL: https://mcp.example.com/mcp
+  WPF_SRE_LEARNING_STORE_PATH: /var/lib/wpf-sre-agent/learning.json
+  ENTRA_READ_SCOPE: Agent.Read
+  ENTRA_RESTART_SCOPE: Agent.Restart
+  ENTRA_DEVOPS_ROLE: DevOps
+  DASHBOARD_ORIGIN: https://langsmith-ui.example.com
+  LANGSMITH_TRACING: "true"
+  LANGSMITH_ENDPOINT: https://api.smith.langchain.com
+  LANGSMITH_PROJECT: wpf-sre-agent
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wpf-sre-agent-model
+  namespace: wpf-sre-agent
+data:
+  models.json: |
+    {
+      "provider": "azure-foundry-anthropic",
+      "model": "claude-sonnet-4-5",
+      "temperature": 0.1,
+      "maxTokens": 4096
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wpf-sre-agent
+  namespace: wpf-sre-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: wpf-sre-agent }
+  template:
+    metadata:
+      labels: { app: wpf-sre-agent }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: wpf-sre-agent
+          image: <ACR_NAME>.azurecr.io/wpf-sre-agent:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: wpf-sre-agent-config
+            - secretRef:
+                name: wpf-sre-agent-secrets
+          readinessProbe:
+            httpGet: { path: /healthz, port: 3002 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 3002 }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: model-config, mountPath: /etc/wpf-sre-agent, readOnly: true }
+            - { name: learning-data, mountPath: /var/lib/wpf-sre-agent }
+      volumes:
+        - name: model-config
+          configMap:
+            name: wpf-sre-agent-model
+        - name: learning-data
+          persistentVolumeClaim:
+            claimName: wpf-sre-agent-learning
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wpf-sre-agent-learning
+  namespace: wpf-sre-agent
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wpf-sre-agent
+  namespace: wpf-sre-agent
+spec:
+  selector: { app: wpf-sre-agent }
+  ports:
+    - port: 80
+      targetPort: 3002
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wpf-sre-agent
+  namespace: wpf-sre-agent
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+    - host: wpf-sre-agent.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: wpf-sre-agent, port: { number: 80 } }

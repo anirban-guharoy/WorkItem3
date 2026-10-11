@@ -1,0 +1,14 @@
+{
+  "name": "manual-testing-agents",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "agents/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

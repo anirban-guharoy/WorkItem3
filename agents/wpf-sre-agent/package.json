@@ -1,0 +1,23 @@
+{
+  "name": "@workitem3/wpf-sre-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/backstage.js && node --check src/agent.js && node --check src/learning.js && node --check src/teams.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.17",
+    "@workitem3/entra-auth": "1.0.0",
+    "@workitem3/langchain-runtime": "1.0.0",
+    "@microsoft/agents-hosting": "^1.9.1",
+    "@microsoft/agents-hosting-express": "^1.9.1",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.7",
+    "express": "^5.3.0"
+  }
+}
